@@ -35,24 +35,23 @@ only reads `players.csv`.
    [1] LEFT · challenger                           [2] RIGHT · #12 of 68 placed
    #41 Scottie Barnes   TOR F·65 GP            #57 Jalen Williams   OKC F·68 GP
 ────────────────────────────────────────────────────────────────────────────────
-                    z       LEFT  │ CATEGORY │       RIGHT       z
-                +0.02      0.472  │   FG%    │  *    0.518 * +0.61
-                +0.18      0.812  │   FT%    │  *    0.889 * +0.77
-              * +0.44 *      1.9  │   3PM    │         1.8   +0.10
-              * +0.72 *     22.4  │   PTS    │        19.8   +0.31
-              * +0.55 *      8.1  │   REB    │         5.4   -0.41
-                -0.12        6.0  │   AST    │  *      6.9 * +0.88
-                +0.31        1.4  │   STL    │         1.4   +0.31
-                -0.22        0.8  │   BLK    │  *      1.7 * +0.95
-                -0.35        2.4  │    TO    │  *      1.9 * +0.41
+                   z       LEFT  │    CAT    │       RIGHT       z
+               +0.02      0.472  │    FG%    │  *    0.518 * +0.61
+               +0.18      0.812  │    FT%    │  *    0.889 * +0.77
+             * +0.44 *      1.9  │    3PM    │         1.8   +0.10
+             * +0.72 *     22.4  │    PTS    │        19.8   +0.31
+             * +0.55 *      8.1  │    REB    │         5.4   -0.41
+               -0.12        6.0  │    AST    │  *      6.9 * +0.88
+               +0.31        1.4  │    STL    │         1.4   +0.31
+               -0.22        0.8  │    BLK    │  *      1.7 * +0.95
+               -0.35        2.4  │    TO     │  *      1.9 * +0.41
 ────────────────────────────────────────────────────────────────────────────────
-              TOTAL Z  +1.53      │ Δ +2.40  │       +3.93 TOTAL Z
+             TOTAL Z +1.53       │  Δ +2.40  │       +3.93 TOTAL Z
                                 RIGHT is better
+                           Ranking Scottie Barnes...
 ────────────────────────────────────────────────────────────────────────────────
    [1] left        [2] right       [t] tie         [u] undo
    [s] skip        [r] rankings    [?] help        [q] save & quit  [e] export
-
-   t: tie — RIGHT (already ranked) stays above   * = better · TO: lower is better
 ```
 
 - **The LEFT side is always the challenger** (the player currently being
@@ -69,6 +68,11 @@ only reads `players.csv`.
   12-for-18 night matters more than a 2-for-3 night).
 - **Δ** = RIGHT's total z minus LEFT's total z, with a plain-language
   verdict.
+- The green **Ranking X...** line under the verdict tracks the challenger
+  being placed. When your answer commits them, that line animates into
+  `✓ PLACED X · #42/200` with growing bars — the moment the ranking is
+  done and the next question is coming. Any keypress skips the rest of
+  the animation; `--no-anim` disables it entirely.
 
 ## Keys
 
@@ -183,6 +187,8 @@ order and the z reference — your answers are ground truth. Sources:
   layout automatically.
 - **No color** → `--no-color`, or set `NO_COLOR=1`; winners are marked
   with `*` instead.
+- **The placement animation is too slow** → any keypress skips it, or
+  start with `--no-anim` to disable it.
 - **Unicode names** (e.g. Jović) degrade to ASCII on terminals that can't
   print them rather than crashing.
 - **State won't load** → the saved progress doesn't match the current

@@ -638,8 +638,8 @@ class UI:
     def _anim_frame(self, txt, pad_to=None):
         """Position txt like the verdict line it sits under."""
         if self.width >= 78:
-            prefix = " " * max(0, (self.width - 52) // 2)
-            body = f"{txt:^52}"
+            prefix = " " * max(0, (self.width - 53) // 2)
+            body = f"{txt:^53}"
         else:
             prefix = "  "
             body = txt
@@ -720,8 +720,8 @@ class UI:
 
     def stats_body(self, L, R):
         if self.width >= 78:
-            prefix = " " * max(0, (self.width - 52) // 2)
-            out = [prefix + f"{'z':>7} {'LEFT':>10}  │ {'CAT':^8} │  "
+            prefix = " " * max(0, (self.width - 53) // 2)
+            out = [prefix + f"{'z':>7} {'LEFT':>10}  │ {'CAT':^9} │  "
                             f"{'RIGHT':>10} {'z':>7}"]
             for cat in CATS:
                 out.append(prefix + self.wide_row(cat, L, R))
@@ -758,7 +758,7 @@ class UI:
         # z on the outside, averages in the middle next to the category
         lv, lz, label, rz, rv, cl, cr, wl, wr = self.row_parts(cat, L, R)
         return (f"{self.cell(lz, 7, cl, wl)} {self.cell(lv, 10, cl, wl)}  │ "
-                f"{label:^8} │  {self.cell(rv, 10, cr, wr)} "
+                f"{label:^9} │  {self.cell(rv, 10, cr, wr)} "
                 f"{self.cell(rz, 7, cr, wr)}")
 
     def stack_row(self, cat, p):
@@ -773,15 +773,16 @@ class UI:
         d = rt - lt
         ver = self.verdict(d)
         if self.width >= 78:
-            # mirror the stats rows: bars at columns 20 and 31 of a 52-wide
-            # table (7 z + 10 val + 2 + bar + 8 cat + bar + 2 + 10 val + 7 z)
-            prefix = " " * max(0, (self.width - 52) // 2)
+            # mirrors the stats rows: bars at columns 20 and 32 of a
+            # 53-wide table (7 z + 10 val + 2 + bar + 9 cat + bar + 2
+            # + 10 val + 7 z)
+            prefix = " " * max(0, (self.width - 53) // 2)
             left = f"TOTAL Z {lt:+6.2f}".ljust(20)
             right = f"{rt:+6.2f} TOTAL Z".rjust(20)
             mid = f"Δ {d:+.2f}"
             return [
-                prefix + f"{left}│ {mid:^8} │{right}",
-                prefix + f"{ver:^52}",
+                prefix + f"{left}│ {mid:^9} │{right}",
+                prefix + f"{ver:^53}",
             ]
         return [f"  Δ {d:+6.2f} → {ver}"]
 
@@ -848,7 +849,7 @@ class UI:
         name = safe_text(self.by_id[pid]["display"])
         mark = "✓" if self.color else "*"
         plain = f"{mark} PLACED {name} · #{pos}/{state['n']}"
-        table_w = 52 if self.width >= 78 else self.width - 2
+        table_w = 53 if self.width >= 78 else self.width - 2
         if len(plain) > table_w - 4:
             tail = f" · #{pos}/{state['n']}"
             keep = table_w - 4 - len(f"{mark} PLACED ") - len(tail) - 1
