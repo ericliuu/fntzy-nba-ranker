@@ -1,5 +1,7 @@
 # NBA 9-Cat Draft Ranker
 
+WARNING: COMPLETELY VIBE CODED
+
 Turn a generic top-200 player list into **your** draft ranking via head-to-head
 comparisons. The app shows two players side-by-side with all nine category
 stats — the better value highlighted — and you pick which one you'd draft
