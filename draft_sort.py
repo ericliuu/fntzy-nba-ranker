@@ -27,6 +27,7 @@ import math
 import os
 import random
 import re
+import select
 import shutil
 import statistics
 import sys
@@ -493,8 +494,9 @@ def place_one(state, ask, save):
     return "committed"
 
 
-def run(state, ask, save):
-    """Rank until the queue is empty or Quit is raised."""
+def run(state, ask, save, after_commit=None):
+    """Rank until the queue is empty or Quit is raised. after_commit (if
+    given) is called with the state after each successful placement."""
     while state["queue"]:
         res = place_one(state, ask, save)
         if res == UNDO:
@@ -503,6 +505,8 @@ def run(state, ask, save):
             do_skip(state, save)
         elif res == REDO:
             do_redo(state, save)
+        elif after_commit:
+            after_commit(state)
     state["done"] = True
     save(state)
 
@@ -558,18 +562,22 @@ def prompt_choice(prompt, choices, default):
 class UI:
     """Renders comparisons and collects verdicts."""
 
-    def __init__(self, by_id, state, punt, color, no_clear, export_path):
+    def __init__(self, by_id, state, punt, color, no_clear, export_path,
+                 anim=True):
         self.by_id = by_id
         self.state = state
         self.punt = set(punt)
         self.export_path = export_path
         self.color = color
+        self.anim = anim
         self.tty_in = sys.stdin.isatty()
         self.tty_out = sys.stdout.isatty()
         self.clear = self.tty_out and color and not no_clear
         width = shutil.get_terminal_size((80, 40)).columns
         self.width = max(40, min(width, 140))
         self.start = time.monotonic()
+        self.last_lines = None
+        self.last_anim_idx = None
 
     # ----- low-level rendering helpers -----
 
@@ -600,12 +608,12 @@ class UI:
         return (f"#{p['id']} {name:<16} {safe_text(p['team'])} "
                 f"{safe_text(p['pos'])}·{p['g']:.0f} GP")
 
-    def inj_block(self, p, width):
+    def inj_block(self, p, width, align="<"):
         if not p["inj"] and not p["inj_note"]:
             return None
         txt = f"[{p['inj']}] {safe_text(p['inj_note'])[:26]}".strip()
         code = RED if p["inj"] in ("INJ", "X") else YELLOW
-        pad = f"{txt:<{width}}"
+        pad = f"{txt:{align}{width}}"
         return (code + pad + RESET) if code and self.color else pad
 
     def elapsed(self):
@@ -621,6 +629,25 @@ class UI:
             return "LEFT is better"
         return "essentially tied"
 
+    def ranking_line(self, L):
+        name = safe_text(L["display"])
+        if len(name) > 24:
+            name = name[:23] + "…"
+        return self._anim_frame(f"Ranking {name}...")
+
+    def _anim_frame(self, txt, pad_to=None):
+        """Position txt like the verdict line it sits under."""
+        if self.width >= 78:
+            prefix = " " * max(0, (self.width - 52) // 2)
+            body = f"{txt:^52}"
+        else:
+            prefix = "  "
+            body = txt
+            if pad_to is not None:
+                body += " " * max(0, pad_to - len(txt))
+        line = prefix + body
+        return (GREEN + line + RESET) if self.color else line
+
     # ----- screen views -----
 
     def render(self, left, right, phase, probe, slot):
@@ -631,7 +658,10 @@ class UI:
         q = state["comparisons"] + 1
         phase_txt = ("[quick check vs current worst]" if phase == "quick"
                      else f"[binary probe {probe[0]} of ~{probe[1]}]")
-        lines = self.render_body(L, R, q, placed, n, pct, phase_txt, slot)
+        lines, anim_idx = self.render_body(L, R, q, placed, n, pct,
+                                           phase_txt, slot)
+        self.last_lines = lines
+        self.last_anim_idx = anim_idx
         out = ("\033[2J\033[H" if self.clear else "") + "\n".join(lines) + "\n"
         sys.stdout.write(out)
         sys.stdout.flush()
@@ -653,9 +683,11 @@ class UI:
         lines += self.stats_body(L, R)
         lines.append("─" * self.width)
         lines += self.total_body(L, R)
+        anim_idx = len(lines)
+        lines.append(self.ranking_line(L))
         lines.append("─" * self.width)
         lines += self.keys_body()
-        return lines
+        return lines, anim_idx
 
     def players_header(self, L, R, slot):
         placed = len(self.state["ranked"])
@@ -669,10 +701,10 @@ class UI:
             rblock = f"{self.player_block(R):>{half + 2}}"
             out.append(lblock + rblock)
             li = self.inj_block(L, half)
-            ri = self.inj_block(R, half)
+            ri = self.inj_block(R, half + 2, ">")
             if li or ri:
-                out.append(f"   {li or '':<{half}}"
-                           f"{(ri or ''):>{half + 2}}")
+                out.append("   " + (li or " " * half)
+                           + (ri or " " * (half + 2)))
             return out
         # stacked
         out = ["   [1] LEFT · challenger", f"   {self.player_block(L)}"]
@@ -689,17 +721,17 @@ class UI:
     def stats_body(self, L, R):
         if self.width >= 78:
             prefix = " " * max(0, (self.width - 52) // 2)
-            out = [prefix + f"{'z':>7} {'LEFT':>10}  │ {'CATEGORY':^8} │  "
+            out = [prefix + f"{'z':>7} {'LEFT':>10}  │ {'CAT':^8} │  "
                             f"{'RIGHT':>10} {'z':>7}"]
             for cat in CATS:
                 out.append(prefix + self.wide_row(cat, L, R))
             return out
-        out = [f"  {'CATEGORY':<8} {'z':>7} {'value':>8}"]
+        out = [f"  {'CAT':<8} {'z':>7} {'value':>8}"]
         for cat in CATS:
             out.append("  " + self.stack_row(cat, L))
         out.append(f"  {'TOTAL Z':<8} {total_z(L, self.punt):+8.2f}")
         out.append("")
-        out.append(f"  {'CATEGORY':<8} {'z':>7} {'value':>8}")
+        out.append(f"  {'CAT':<8} {'z':>7} {'value':>8}")
         for cat in CATS:
             out.append("  " + self.stack_row(cat, R))
         out.append(f"  {'TOTAL Z':<8} {total_z(R, self.punt):+8.2f}")
@@ -759,15 +791,14 @@ class UI:
             slots = ["[1] left", "[2] right", "[t] tie", "[u] undo",
                      "[s] skip", "[r] rankings", "[?] help", "[q] save & quit"]
             w = max(len(s) for s in slots) + 1      # even column grid
-            line1 = "   " + "".join(s.ljust(w) for s in slots[:4]).rstrip()
+            line1 = "   " + "".join(s.ljust(w) for s in slots[:4])
             if redo:
                 line1 += "  [y] redo"
-            line2 = "   " + "".join(s.ljust(w) for s in slots[4:]).rstrip()
+            else:
+                line1 = line1.rstrip()
+            line2 = "   " + "".join(s.ljust(w) for s in slots[4:])
             line2 += "  [e] export"
-            note = "   t: tie — RIGHT (already ranked) stays above"
-            if not self.color:
-                note += "   * = better · TO: lower is better"
-            return [line1, line2, "", note]
+            return [line1, line2]
         # stacked: compact three-per-line layout
         out = ["   [1] left   [2] right   [t] tie",
                "   [u] undo   [s] skip   [r] rankings"]
@@ -806,6 +837,84 @@ class UI:
             if act == "right":
                 return RIGHT
             return TIE
+
+    def place_animation(self, state):
+        """Animate the 'Ranking X...' line into a 'PLACED' banner, in
+        place on the last rendered screen."""
+        if not self.anim or not self.tty_out or self.last_lines is None:
+            return
+        pid = state["placements"][-1]
+        pos = state["ranked"].index(pid) + 1
+        name = safe_text(self.by_id[pid]["display"])
+        mark = "✓" if self.color else "*"
+        plain = f"{mark} PLACED {name} · #{pos}/{state['n']}"
+        table_w = 52 if self.width >= 78 else self.width - 2
+        if len(plain) > table_w - 4:
+            tail = f" · #{pos}/{state['n']}"
+            keep = table_w - 4 - len(f"{mark} PLACED ") - len(tail) - 1
+            if keep >= 3:
+                name = name[:keep] + "…"
+            else:
+                name = name[:max(1, keep)]
+            plain = f"{mark} PLACED {name}{tail}"
+        if len(plain) > table_w - 4:
+            plain = plain[:table_w - 4]
+        max_bar = min(10, max(0, (table_w - len(plain) - 4) // 2))
+        seq = [(f"Ranking {name}" + "." * d, 0.12) for d in (0, 1, 2, 3)]
+        seq.append((f"  {plain}  ", 0.15))
+        for n in range(1, max_bar + 1):
+            bar = "═" * n
+            seq.append((f"  {bar} {plain} {bar}", 0.07))
+        if max_bar == 0:
+            seq.append((plain, 0.15))
+        pad_to = max(len(t) for t, _ in seq)
+
+        lines = list(self.last_lines)
+        lines[self.last_anim_idx] = self._anim_frame(seq[0][0], pad_to)
+        out = ("\033[2J\033[H" if self.clear else "") + "\n".join(lines) + "\n"
+        sys.stdout.write(out)
+        sys.stdout.flush()
+        up = len(lines) - self.last_anim_idx
+
+        fd = old = None
+        if self.tty_in:
+            fd = sys.stdin.fileno()
+            old = termios.tcgetattr(fd)
+            tty.setcbreak(fd)
+        try:
+            for frame, delay in seq[1:]:
+                if self.tty_in:
+                    if select.select([sys.stdin], [], [], delay)[0]:
+                        break                  # a keypress skips the rest
+                else:
+                    time.sleep(delay)
+                sys.stdout.write(f"\033[{up}A\r"
+                                 f"{self._anim_frame(frame, pad_to)}"
+                                 f"\033[{up}B")
+                sys.stdout.flush()
+            if self.tty_in:
+                select.select([sys.stdin], [], [], 0.4)
+            else:
+                time.sleep(0.4)
+        finally:
+            if old is not None:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        self._drain_input()
+
+    def _drain_input(self):
+        """Discard keys typed while the animation played so they can't
+        answer a question the user hasn't seen yet."""
+        if not self.tty_in:
+            return
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            while select.select([sys.stdin], [], [], 0)[0]:
+                if not sys.stdin.buffer.read(1):
+                    break
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
     def export_current(self):
         """Write the current ranking to the export file (key 'e')."""
@@ -1242,6 +1351,8 @@ def main(argv=None):
                     help="mid-run export file for the 'e' key")
     ap.add_argument("--no-color", action="store_true")
     ap.add_argument("--no-clear", action="store_true")
+    ap.add_argument("--no-anim", action="store_true",
+                    help="disable the 'placed' animation between players")
     ap.add_argument("--restart", action="store_true",
                     help="ignore saved progress and start over")
     ap.add_argument("--selftest", action="store_true",
@@ -1318,7 +1429,8 @@ def main(argv=None):
     save_state(state, args.state)
 
     punt_set = set(state["punt"])
-    ui = UI(by_id, state, punt_set, color, args.no_clear, args.export)
+    ui = UI(by_id, state, punt_set, color, args.no_clear, args.export,
+            anim=not args.no_anim)
 
     placed, remaining = len(state["ranked"]), len(state["queue"])
     print(f"NBA 9-cat draft ranker — {state['n']} players")
@@ -1331,7 +1443,8 @@ def main(argv=None):
               "'r', '?', or 'q' + Enter)")
 
     try:
-        run(state, ui.ask, lambda st: save_state(st, args.state))
+        run(state, ui.ask, lambda st: save_state(st, args.state),
+            after_commit=ui.place_animation)
     except Quit:
         save_state(state, args.state)
         print()
