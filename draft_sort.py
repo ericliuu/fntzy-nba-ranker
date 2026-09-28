@@ -1001,13 +1001,14 @@ def write_export(state, by_id, punt, path):
         f.write(f"# exported: {now_iso()} · {state['comparisons']} comparisons"
                 f" · {state['ties']} ties · punt: "
                 f"{', '.join(state['punt']) or 'none'}\n")
-        f.write(f"{'':6}{'NAME':<26} {'POS':<4} {'Z':>7} "
+        pos_w = max((len(by_id[pid]["pos"]) for pid in ranked), default=3)
+        f.write(f"{'':6}{'NAME':<26} {'POS':<{pos_w}} {'Z':>7} "
                 + " ".join(f"{CAT_LABEL[c]:>6}" for c in CATS) + "\n")
         for i, pid in enumerate(ranked, 1):
             p = by_id[pid]
             z = total_z(p, set(state["punt"]))
             stats = " ".join(f"{stat_fmt(c, p):>6}" for c in CATS)
-            f.write(f"{i:>4}. {p['display']:<26} {p['pos']:<4} "
+            f.write(f"{i:>4}. {p['display']:<26} {p['pos']:<{pos_w}} "
                     f"{z:>+7.2f} {stats}\n")
 
 
